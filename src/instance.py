@@ -99,18 +99,24 @@ def read_instance(path: str | Path, max_days: int | None = None) -> Instance:
     if max_days is not None:
         horizon = horizon.head(max_days)
     days = [int(day) for day in horizon["DIA"]]
-    day_month = {int(row.DIA): int(row.MES) for row in horizon.itertuples()}
-    slow_days = {int(row.DIA) for row in horizon.itertuples() if pd.notna(row.CICLO_LENTO)}
+    day_month = {
+        int(d): int(m) for d, m in zip(horizon["DIA"], horizon["MES"], strict=True)
+    }
+    slow_days = {
+        int(d)
+        for d, slow in zip(horizon["DIA"], horizon["CICLO_LENTO"], strict=True)
+        if pd.notna(slow)
+    }
 
     ups = {
-        row.UP: ProductionUnit(
-            name=row.UP,
-            farm=row.FAZENDA,
-            volume=float(row.VOLUME),
-            db=float(row.DB),
-            rsp=float(row.RSP),
+        row["UP"]: ProductionUnit(
+            name=row["UP"],
+            farm=row["FAZENDA"],
+            volume=float(row["VOLUME"]),
+            db=float(row["DB"]),
+            rsp=float(row["RSP"]),
         )
-        for row in sheets["BD_UP"].itertuples()
+        for row in sheets["BD_UP"].to_dict(orient="records")
     }
 
     fleet = sheets["FROTA"].set_index("TRANSPORTADOR")
@@ -127,21 +133,31 @@ def read_instance(path: str | Path, max_days: int | None = None) -> Instance:
     }
 
     routes = {
-        (row.ORIGEM, row.TRANSPORTADOR): Route(
-            up=row.ORIGEM,
-            transporter=row.TRANSPORTADOR,
-            factory=row.DESTINO,
-            load_size=float(row.CAIXA_CARGA),
-            cycle_time=float(row.TEMPO_CICLO),
-            slow_cycle_time=float(row.CICLO_LENTO),
+        (row["ORIGEM"], row["TRANSPORTADOR"]): Route(
+            up=row["ORIGEM"],
+            transporter=row["TRANSPORTADOR"],
+            factory=row["DESTINO"],
+            load_size=float(row["CAIXA_CARGA"]),
+            cycle_time=float(row["TEMPO_CICLO"]),
+            slow_cycle_time=float(row["CICLO_LENTO"]),
         )
-        for row in sheets["ROTA"].itertuples()
+        for row in sheets["ROTA"].to_dict(orient="records")
     }
 
     factory = sheets["FABRICA"]
     factory = factory[factory["DIA"].isin(days)]
-    demand = {int(row.DIA): (float(row.DEMANDA_MIN), float(row.DEMANDA_MAX)) for row in factory.itertuples()}
-    rsp_limits = {int(row.DIA): (float(row.RSP_MIN), float(row.RSP_MAX)) for row in factory.itertuples()}
+    demand = {
+        int(d): (float(dmin), float(dmax))
+        for d, dmin, dmax in zip(
+            factory["DIA"], factory["DEMANDA_MIN"], factory["DEMANDA_MAX"], strict=True
+        )
+    }
+    rsp_limits = {
+        int(d): (float(rmin), float(rmax))
+        for d, rmin, rmax in zip(
+            factory["DIA"], factory["RSP_MIN"], factory["RSP_MAX"], strict=True
+        )
+    }
 
     return Instance(
         days=days,
